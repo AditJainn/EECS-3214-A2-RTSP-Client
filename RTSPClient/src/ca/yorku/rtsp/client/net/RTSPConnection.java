@@ -83,12 +83,12 @@ public class RTSPConnection {
 
     public synchronized void setup(String videoName) throws RTSPException {
         DatagramSocket videoSocket = null; 
-
+        RTSPResponse response = null;
         int randomPort = (int) (Math.random() * (6000)) + 1024;
-
         while (videoSocket == null){
             try {
                 videoSocket = new DatagramSocket(randomPort);
+                videoSocket.setSoTimeout(2000);
                 // If the socket is created successfully, it means the port is available
             } catch (Exception e) {
                 randomPort = (int) (Math.random() * (6000)) + 1024;
@@ -98,71 +98,16 @@ public class RTSPConnection {
         }
 
         String request = "SETUP movie1.Mjpeg RTSP/1.0\nCSeq: 1\nTransport: RTP/UDP; client_port="+randomPort+"\r\n";
-        // request ="SETUP movie.Mjpeg RTSP/1.0 CSeq: 1 Transport: RTP/UDP; client_port= 25000 \n";
-
         cOut.println(request);
-        System.out.println(request);
-        String message = "";
-        try{
-            System.out.println(cIn.readLine());
-            System.out.println(cIn.readLine());
-            // while ((message = cIn.readLine()) != null) {
-            //     System.out.println("Client: " + message);
-            //     // out.println("Received: " + message); // Echo back
-            // }
-        }    
-        catch(IOException e) {
-            e.printStackTrace();
 
-        }    
-        // System.out.println(cIn.readLine());
+        // prone to bug here!! just leaving it for now - > response may not always be 3 lines
 
+        try {
+            response = readRTSPResponse();
 
-        // DatagramSocket videoSocket = null; 
-
-        // int randomPort = (int) (Math.random() * (6000)) + 1024;
-
-        // while (videoSocket == null){
-        //     try (DatagramSocket socket = new DatagramSocket(randomPort)) {
-        //         // If the socket is created successfully, it means the port is available
-        //     } catch (Exception e) {
-        //         // If there is an exception, the port is already in use
-        //     } 
-        // }
-        // videoSocket = new DatagramSocket(randomPort);
-        // DatagramSocket vSocket = null;
-        // int port = (int) (Math.random() * (6000)) + 1024;; // Port to listen on
-
-        // try {
-        //     // Create a DatagramSocket bound to the specified port
-        //     vSocket = new DatagramSocket(port);
-        //     System.out.println("Listening for UDP packets on port " + port + "...");
-            
-        //     // Create a buffer to store incoming data
-        //     byte[] buffer = new byte[65536]; // You can adjust the buffer size
-            
-        //     // Infinite loop to keep listening for packets
-        //     while (true) {
-        //         DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-                
-        //         // Receive the incoming packet
-        //         vSocket.receive(packet);
-                
-        //         // Extract data from the packet
-        //         String receivedData = new String(packet.getData(), 0, packet.getLength());
-                
-        //         // Print the received data
-        //         System.out.println("Received message: " + receivedData);
-                
-        //         // Process the received message here (e.g., send a response, log, etc.)
-        //     }
-        // } catch (Exception e) {
-        //     e.printStackTrace();
-        // } finally {
-        //     if (socket != null && !socket.isClosed()) {
-        //         vSocket.close(); // Close the socket when done
-        //     }
-        // }
+        } catch (Exception e) {
+            // TODO: handle exception
+        }
 
 
 
@@ -279,9 +224,23 @@ public class RTSPConnection {
      * @throws IOException   In case of an I/O error, such as loss of connectivity.
      * @throws RTSPException If the response doesn't match the expected format.
      */
-    public RTSPResponse readRTSPResponse() throws IOException, RTSPException {
 
+
+    // We need to deal with the issue of maybe not getting 3 lines 
+    public RTSPResponse readRTSPResponse() throws IOException, RTSPException {
         // TODO
+
+        try{
+            System.out.println("Reading in RTSP response");
+            String version = cIn.readLine();
+            String responseCode = cIn.readLine().split(": ")[1];
+            String message = cIn.readLine();
+            return new RTSPResponse(version,Integer.parseInt(responseCode),message);
+        }    
+        catch(IOException e) {
+            e.printStackTrace();
+        }   
+    
         return null; // Replace with a proper RTSPResponse
     }
 
