@@ -23,6 +23,12 @@ public class RTSPConnection {
 
     private static final int BUFFER_LENGTH = 0x10000;
     private final Session session;
+    private Socket connectionSocket; 
+    private PrintWriter cOut;
+    private BufferedReader cIn;
+    
+    // private PrintWriter vOut;
+    // private BufferedReader vIn;
 
 
     // TODO Add additional fields, if necessary
@@ -39,7 +45,15 @@ public class RTSPConnection {
      *                       are invalid or there is no connectivity.
      */
     public RTSPConnection(Session session, String server, int port) throws RTSPException {
+        System.out.printf("session : %s \n Server : %s \n Port: %d \n ",session,server,port);
 
+        try {
+            connectionSocket = new Socket(server, port);
+            cIn = new BufferedReader(new InputStreamReader(connectionSocket.getInputStream()));
+            cOut = new PrintWriter(connectionSocket.getOutputStream(), true);
+        } catch (IOException e) {
+            throw new RTSPException("Could not connect" + e.getMessage());
+        }
         this.session = session;
 
         // TODO
@@ -64,7 +78,93 @@ public class RTSPConnection {
      *                       server did not return a successful
      *                       response.
      */
+
+    //  TO DO make port random 
+
     public synchronized void setup(String videoName) throws RTSPException {
+        DatagramSocket videoSocket = null; 
+
+        int randomPort = (int) (Math.random() * (6000)) + 1024;
+
+        while (videoSocket == null){
+            try {
+                videoSocket = new DatagramSocket(randomPort);
+                // If the socket is created successfully, it means the port is available
+            } catch (Exception e) {
+                randomPort = (int) (Math.random() * (6000)) + 1024;
+                videoSocket = null;
+                // If there is an exception, the port is already in use
+            } 
+        }
+
+        String request = "SETUP movie1.Mjpeg RTSP/1.0\nCSeq: 1\nTransport: RTP/UDP; client_port="+randomPort+"\r\n";
+        // request ="SETUP movie.Mjpeg RTSP/1.0 CSeq: 1 Transport: RTP/UDP; client_port= 25000 \n";
+
+        cOut.println(request);
+        System.out.println(request);
+        String message = "";
+        try{
+            System.out.println(cIn.readLine());
+            System.out.println(cIn.readLine());
+            // while ((message = cIn.readLine()) != null) {
+            //     System.out.println("Client: " + message);
+            //     // out.println("Received: " + message); // Echo back
+            // }
+        }    
+        catch(IOException e) {
+            e.printStackTrace();
+
+        }    
+        // System.out.println(cIn.readLine());
+
+
+        // DatagramSocket videoSocket = null; 
+
+        // int randomPort = (int) (Math.random() * (6000)) + 1024;
+
+        // while (videoSocket == null){
+        //     try (DatagramSocket socket = new DatagramSocket(randomPort)) {
+        //         // If the socket is created successfully, it means the port is available
+        //     } catch (Exception e) {
+        //         // If there is an exception, the port is already in use
+        //     } 
+        // }
+        // videoSocket = new DatagramSocket(randomPort);
+        // DatagramSocket vSocket = null;
+        // int port = (int) (Math.random() * (6000)) + 1024;; // Port to listen on
+
+        // try {
+        //     // Create a DatagramSocket bound to the specified port
+        //     vSocket = new DatagramSocket(port);
+        //     System.out.println("Listening for UDP packets on port " + port + "...");
+            
+        //     // Create a buffer to store incoming data
+        //     byte[] buffer = new byte[65536]; // You can adjust the buffer size
+            
+        //     // Infinite loop to keep listening for packets
+        //     while (true) {
+        //         DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                
+        //         // Receive the incoming packet
+        //         vSocket.receive(packet);
+                
+        //         // Extract data from the packet
+        //         String receivedData = new String(packet.getData(), 0, packet.getLength());
+                
+        //         // Print the received data
+        //         System.out.println("Received message: " + receivedData);
+                
+        //         // Process the received message here (e.g., send a response, log, etc.)
+        //     }
+        // } catch (Exception e) {
+        //     e.printStackTrace();
+        // } finally {
+        //     if (socket != null && !socket.isClosed()) {
+        //         vSocket.close(); // Close the socket when done
+        //     }
+        // }
+
+
 
         // TODO
     }

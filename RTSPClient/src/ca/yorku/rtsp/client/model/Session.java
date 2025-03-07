@@ -106,7 +106,7 @@ public class Session {
     public synchronized void close() {
         try {
             rtspConnection.teardown();
-            processReceivedFrame(null);
+            videoEnded(0);
             videoName = null;
             for (SessionListener listener : sessionListeners)
                 listener.videoNameChanged(this.videoName);
