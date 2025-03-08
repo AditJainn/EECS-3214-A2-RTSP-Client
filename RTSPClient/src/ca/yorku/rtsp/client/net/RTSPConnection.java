@@ -26,6 +26,9 @@ public class RTSPConnection {
     private Socket connectionSocket; 
     private PrintWriter cOut;
     private BufferedReader cIn;
+    private RTSPResponse response = null;
+    private DatagramSocket videoSocket = null;
+
     
     // private PrintWriter vOut;
     // private BufferedReader vIn;
@@ -55,6 +58,7 @@ public class RTSPConnection {
             throw new RTSPException("Could not connect" + e.getMessage());
         }
         this.session = session;
+        // session.get
 
         // TODO
     }
@@ -83,7 +87,6 @@ public class RTSPConnection {
 
     public synchronized void setup(String videoName) throws RTSPException {
         DatagramSocket videoSocket = null; 
-        RTSPResponse response = null;
         int randomPort = (int) (Math.random() * (6000)) + 1024;
         while (videoSocket == null){
             try {
@@ -96,21 +99,18 @@ public class RTSPConnection {
                 // If there is an exception, the port is already in use
             } 
         }
-
         String request = "SETUP movie1.Mjpeg RTSP/1.0\nCSeq: 1\nTransport: RTP/UDP; client_port="+randomPort+"\r\n";
         cOut.println(request);
 
         // prone to bug here!! just leaving it for now - > response may not always be 3 lines
-
         try {
             response = readRTSPResponse();
 
         } catch (Exception e) {
             // TODO: handle exception
         }
-
-
-
+        System.out.println("This is my message");
+        
         // TODO
     }
 
@@ -127,6 +127,29 @@ public class RTSPConnection {
      *                       did not return a successful response.
      */
     public synchronized void play() throws RTSPException {
+        // videoSocket // is our socket .
+        String request = "PLAY movie1.Mjpeg RTSP/1.0\nCSeq: 2\nSession: 123456";
+        System.out.println("Printed");
+        cOut.println(request);
+        byte[] buffer = new byte[2048];
+
+        boolean running = true; 
+        while (running) {
+            DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+            videoSocket.receive(packet);
+            
+
+            // Process RTP packet (extract payload, timestamp, sequence number, etc.)
+
+        }
+
+        try {
+            System.out.println(cIn.readLine());
+            
+        } catch (Exception e) {
+            // TODO: handle exception
+        }
+
 
         // TODO
     }
