@@ -130,8 +130,21 @@ public class RTSPConnection {
         // videoSocket // is our socket .
         String request = "PLAY movie1.Mjpeg RTSP/1.0\nCSeq: 2\n"+response.getResponseMessage()+"\n";
 
-        System.out.println("Play Request Sent \n"+ request);
+        System.out.println("Play Request Sent: \n"+ request);
         cOut.println(request);
+        
+        try {
+            System.out.println("PLAY Response Receieved:\n" );
+            System.out.println("1."+cIn.readLine());
+            System.out.println("2."+cIn.readLine());
+            System.out.println("3."+cIn.readLine());
+            System.out.println("4."+cIn.readLine());
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            // TODO: handle exception
+        }
+
 
         try {
         byte[] buffer = new byte[BUFFER_LENGTH];
@@ -145,21 +158,6 @@ public class RTSPConnection {
             // TODO: handle exception
         }
         
-        // boolean running = true;
-        // try {
-        //     while (running) {
-        //         byte[] buffer = new byte[BUFFER_LENGTH];
-        //         DatagramPacket packet = new DatagramPacket(buffer, BUFFER_LENGTH);
-        //         videoSocket.receive(packet);
-        //         System.out.println(packet);
-        //     }
-        // }
-
-        // catch (Exception e) {
-        //     e.printStackTrace();
-        //     // TODO: handle exception
-        // }
-
         // TODO
 
     }
