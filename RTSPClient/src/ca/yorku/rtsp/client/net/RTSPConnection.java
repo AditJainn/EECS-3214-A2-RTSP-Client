@@ -85,7 +85,7 @@ public class RTSPConnection {
     // TO DO make port random
 
     public synchronized void setup(String videoName) throws RTSPException {
-        int dataport ;
+        int dataport = 0 ;
         while (videoSocket == null) {
             try {
                 videoSocket = new DatagramSocket();
