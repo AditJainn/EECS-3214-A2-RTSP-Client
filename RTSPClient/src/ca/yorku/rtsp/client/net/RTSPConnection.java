@@ -28,11 +28,13 @@ public class RTSPConnection {
     private final PrintWriter controlWriter;
     private final BufferedReader controlReader;
     private RTSPResponse response = null;
+    private int cSeq = 1;
 
     // =========================
     // RTP (Data) - UDP Socket Fields
     // =========================
     private DatagramSocket videoSocket = null;
+    private int dataPort;
     private static final int BUFFER_LENGTH = 0x10000;
     RTPReceivingThread videoThread = new RTPReceivingThread();
 
@@ -81,8 +83,8 @@ public class RTSPConnection {
         try {
             videoSocket = new DatagramSocket();
             videoSocket.setSoTimeout(2000);
-            int dataPort = videoSocket.getLocalPort();
-            controlWriter.println(String.format("SETUP movie1.Mjpeg RTSP/1.0\nCSeq: 1\nTransport: RTP/UDP; client_port=%d\r\n",
+            dataPort = videoSocket.getLocalPort();
+            controlWriter.println(String.format("SETUP movie1.Mjpeg RTSP/1.0\nCSeq: " + (cSeq++) + "\nTransport: RTP/UDP; client_port=%d\r\n",
                     dataPort)); // TODO: Add `videoName` parameter to the request
         } catch (IOException e) {
             throw new RTSPException("RTP connection failed: " + e.getMessage());
@@ -109,17 +111,18 @@ public class RTSPConnection {
      */
     public synchronized void play() throws RTSPException {
         // videoSocket // is our socket .
-        String request = "PLAY movie1.Mjpeg RTSP/1.0\nCSeq: 2\n" + response.getResponseMessage() + "\n";
+//        String request = "PLAY movie1.Mjpeg RTSP/1.0\nCSeq: " + (cSeq++) + "\n" + response.getResponseMessage() + "\n";
+        String request = generateRequest("PLAY");
 
         System.out.println("Play Request Sent: \n" + request);
         controlWriter.println(request);
 
         try {
-            System.out.println("PLAY Response Receieved:\n");
-            System.out.println("1." + controlReader.readLine()); // I think is
-            System.out.println("2." + controlReader.readLine());
-            System.out.println("3." + controlReader.readLine());
-            System.out.println("4." + controlReader.readLine());
+//            System.out.println("PLAY Response Receieved:\n");
+//            System.out.println("1." + controlReader.readLine()); // I think is
+//            System.out.println("2." + controlReader.readLine());
+//            System.out.println("3." + controlReader.readLine());
+//            System.out.println("4." + controlReader.readLine());
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -187,8 +190,13 @@ public class RTSPConnection {
      *                       did not return a successful response.
      */
     public synchronized void pause() throws RTSPException {
+        controlWriter.print(generateRequest("PAUSE"));
 
-        // TODO
+        try {
+            response = readRTSPResponse();
+        } catch (IOException e) {
+            throw new RTSPException(e);
+        }
     }
 
     /**
@@ -206,8 +214,7 @@ public class RTSPConnection {
      *                       did not return a successful response.
      */
     public synchronized void teardown() throws RTSPException {
-
-        // TODO
+//        controlWriter.print(generateRequest("TEARDOWN"));
     }
 
     /**
@@ -290,5 +297,12 @@ public class RTSPConnection {
         }
 
         return null; // Replace with a proper RTSPResponse
+    }
+
+    private String generateRequest(String operation) {
+        String request = String.format("%s %s RTSP/1.0\nCSeq: %d\n%s\r\n",
+                operation, session.getVideoName(), cSeq++, response.getResponseMessage());
+        System.out.println(request);
+        return request;
     }
 }
