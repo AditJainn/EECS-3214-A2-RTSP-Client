@@ -30,6 +30,8 @@ public class RTSPConnection {
     private RTSPResponse response = null;
     private int cSeq = 1;
     private boolean paused;
+    private boolean videoSetup;
+    private boolean movieCompleted;
 
 
     // =========================
@@ -81,6 +83,10 @@ public class RTSPConnection {
      *                       response.
      */
     public synchronized void setup(String videoName) throws RTSPException {
+        
+        if (videoSocket != null ){ // already exsists
+            teardown();
+        }
         try {
             videoSocket = new DatagramSocket();
             videoSocket.setSoTimeout(2000);
@@ -112,8 +118,13 @@ public class RTSPConnection {
      */
     public synchronized void play() throws RTSPException {
         // if 
-        if (videoSocket == null){ // deals with non-setup movie play requests.
+        if (videoSocket == null ){ // deals with non-setup movie play requests.
             System.out.println("NO MOVIE HAS BEEN SET UP");
+            return;
+        }
+        if (videoThread != null & videoThread.isMovieCompleted() == true) {
+            movieCompleted = true;
+            System.out.println("Nothing in buffer");
             return;
         }
         paused = false;
@@ -128,6 +139,7 @@ public class RTSPConnection {
         }
 
         if (videoThread == null || !videoThread.isAlive()) {
+            movieCompleted = false;
             System.out.println("Thread started: " + Thread.currentThread().getName());
             System.out.println("Active thread count: " + Thread.activeCount());
             videoThread = new RTPReceivingThread();
@@ -151,6 +163,11 @@ public class RTSPConnection {
          * the end of the stream, the method session.videoEnded() is
          * called, and the thread is terminated.
          */
+        boolean movieCompleted = false; 
+        public boolean isMovieCompleted() {
+            return movieCompleted;
+        }
+        
         @Override
         public void run() {
             System.out.println("Thread started: " + Thread.currentThread().getName());
@@ -162,8 +179,8 @@ public class RTSPConnection {
                 try {
                     videoSocket.receive(packet);
                     f = parseRTPPacket(packet);
-
                     if (f.getPayloadLength() == 0) {
+                        movieCompleted = true;
                         session.videoEnded(cSeq);
                         break;
                     }
@@ -176,6 +193,7 @@ public class RTSPConnection {
                     throw new RuntimeException(e);
                 }
             }
+            
         }
     }
 
@@ -192,6 +210,11 @@ public class RTSPConnection {
     public synchronized void pause() throws RTSPException {
         if (videoSocket == null){
             System.out.println("NO MOVIE HAS BEEN SET UP");
+            return;
+        }
+        if (videoThread != null & videoThread.isMovieCompleted() == true) {
+            movieCompleted = true;
+            System.out.println("Nothing to pause");
             return;
         }
         else if( paused ){
@@ -230,7 +253,6 @@ public class RTSPConnection {
      */
     public synchronized void teardown() throws RTSPException {
         if (response == null || videoSocket == null) return;
-        
 
         controlWriter.println(generateRequest("TEARDOWN"));
 
@@ -341,7 +363,8 @@ public class RTSPConnection {
                 } else if (data.length == 2 && response != null) {
                     response.addHeaderValue(data[0], data[1]);
                 } else {
-                    throw new RTSPException("The response does not match the expected format.");
+                    
+                    throw new RTSPException("The response does not match the expected format. \n "+line);
                 }
             }
 
