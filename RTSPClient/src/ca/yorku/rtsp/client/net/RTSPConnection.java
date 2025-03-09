@@ -214,7 +214,25 @@ public class RTSPConnection {
      *                       did not return a successful response.
      */
     public synchronized void teardown() throws RTSPException {
-//        controlWriter.print(generateRequest("TEARDOWN"));
+        if (response == null) return;
+
+        controlWriter.println(generateRequest("TEARDOWN"));
+
+        try {
+            response = readRTSPResponse();
+            validateResponse();
+        } catch (IOException e) {
+            throw new RTSPException("Failed to teardown: " + e.getMessage());
+        }
+
+        if (videoThread != null && videoThread.isAlive()) {
+            videoThread.interrupt();
+        }
+
+        if (videoSocket != null && !videoSocket.isClosed()) {
+            videoSocket.close();
+            videoSocket = null;
+        }
     }
 
     /**
@@ -223,8 +241,29 @@ public class RTSPConnection {
      * such as the RTP connection and thread, if it is still open.
      */
     public synchronized void closeConnection() {
+        try {
+            teardown();
+        } catch (RTSPException e) {
+            System.err.println("Failed to teardown stream before closing connection - " + e.getMessage());
+        }
 
-        // TODO
+        try {
+            if (controlSocket != null && !controlSocket.isClosed()) {
+                controlSocket.close();
+                System.out.println("RTSP control socket closed.");
+            }
+        } catch (IOException e) {
+            System.err.println("Failed to close RTSP control socket - " + e.getMessage());
+        }
+
+        if (videoSocket != null && !videoSocket.isClosed()) {
+            videoSocket.close();
+            videoSocket = null;
+        }
+
+        if (videoThread != null && videoThread.isAlive()) {
+            videoThread.interrupt();
+        }
     }
 
     /**
