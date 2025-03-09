@@ -35,6 +35,8 @@ public class RTSPConnection {
     private DatagramSocket videoSocket = null;
     private static final int BUFFER_LENGTH = 0x10000;
     RTPReceivingThread videoThread = new RTPReceivingThread();
+    int cSeq = 1;
+    int serverSessionCode = 0; 
 
     /**
      * Establishes a new connection with an RTSP server. No message is
@@ -82,14 +84,16 @@ public class RTSPConnection {
             videoSocket = new DatagramSocket();
             videoSocket.setSoTimeout(2000);
             int dataPort = videoSocket.getLocalPort();
-            controlWriter.println(String.format("SETUP movie1.Mjpeg RTSP/1.0\nCSeq: 1\nTransport: RTP/UDP; client_port=%d\r\n",
+            controlWriter.println(String.format("SETUP movie1.Mjpeg RTSP/1.0\nCSeq: %d\nTransport: RTP/UDP; client_port=%d\r\n",cSeq,
                     dataPort)); // TODO: Add `videoName` parameter to the request
         } catch (IOException e) {
             throw new RTSPException("RTP connection failed: " + e.getMessage());
         }
 
         try {
-            response = readRTSPResponse();
+            isValidResponse();
+
+
         } catch (Exception e) {
             throw new RTSPException("Unable to receive response from server: " + e.getMessage());
         }
@@ -108,30 +112,37 @@ public class RTSPConnection {
      *                       did not return a successful response.
      */
     public synchronized void play() throws RTSPException {
-        // videoSocket // is our socket .
-        String request = "PLAY movie1.Mjpeg RTSP/1.0\nCSeq: 2\n" + response.getResponseMessage() + "\n";
+        if (session.getVideoName() == null){ // if the setup has not been initiated 
+            System.out.println("Please Complete Setup Frist ");
+            return;
+        }
 
+        // String request = "PLAY movie1.Mjpeg RTSP/1.0\nCSeq: 2\n" + response.getResponseMessage() + "\n";
+
+        String request = String.format("PLAY movie1.Mjpeg RTSP/1.0\nCSeq: %d\n%d\n",cSeq,this.serverSessionCode);
+        System.out.println(request);
+
+
+        controlWriter.println(request); // TODO: Add `videoName` parameter to the request
+        // controlWriter.println(String.format("SETUP movie1.Mjpeg RTSP/1.0\nCSeq: %d\nTransport: RTP/UDP; client_port=%s\r\n",cSeq,
+        // this.serverSessionCode)); // TODO: Add `videoName` parameter to the request
         System.out.println("Play Request Sent: \n" + request);
-        controlWriter.println(request);
 
         try {
+
             System.out.println("PLAY Response Receieved:\n");
-            System.out.println("1." + controlReader.readLine()); // I think is
-            System.out.println("2." + controlReader.readLine());
-            System.out.println("3." + controlReader.readLine());
-            System.out.println("4." + controlReader.readLine());
+            response = readRTSPResponse(); // this only deals with the first line as per the method specifications 
+            if (response.getResponseCode() != 200){
+                throw new RTSPException(response.getResponseMessage());
+            }
 
         } catch (Exception e) {
-            e.printStackTrace();
+            throw new RTSPException("Play request Failed:  " + e.getMessage());
             // TODO: handle exception
         }
-        System.out.println("Thread started: " + Thread.currentThread().getName());
-        System.out.println("Active thread count: " + Thread.activeCount());
+
         videoThread.start();
-        // System.out.println("Active thread count: " + Thread.activeCount());
-        // Thread.getAllStackTraces().keySet().forEach(t ->
-        // System.out.println("Thread: " + t.getName() + " State: " + t.getState()));
-        // System.out.println(videdoThread.isAlive());
+
         // TODO
 
     }
@@ -279,16 +290,36 @@ public class RTSPConnection {
      * @throws RTSPException If the response doesn't match the expected format.
      */
     public RTSPResponse readRTSPResponse() throws IOException, RTSPException {
-        try {
-            System.out.println("Reading in RTSP response");
-            String version = controlReader.readLine();
-            String responseCode = controlReader.readLine().split(": ")[1];
-            String message = controlReader.readLine();
-            return new RTSPResponse(version, Integer.parseInt(responseCode), message);
-        } catch (IOException e) {
-            e.printStackTrace();
+        String[] response = controlReader.readLine().split(" ");
+        return new RTSPResponse(response[0], Integer.parseInt(response[1]), response[2]);
+    }
+
+
+    public boolean isValidResponse() throws IOException, RTSPException {
+        this.response = readRTSPResponse();
+        if (this.response.getResponseCode() != 200){
+            throw new RTSPException("Bad Response from Server" + this.response.getResponseMessage());
         }
 
-        return null; // Replace with a proper RTSPResponse
+        String cSeq = controlReader.readLine(); // this should be the CSeq number line
+        int responsecSeq = Integer.parseInt(cSeq.split(": ")[1]);
+        if (responsecSeq != this.cSeq){
+            throw new RTSPException("cSeq Mismatch Error" + this.response.getResponseMessage());
+        }
+        else{
+            this.cSeq +=1 ; 
+        }
+    
+        String temp = controlReader.readLine();
+        System.out.println(temp);
+        int temp1 = Integer.parseInt(temp.split(": ")[1]);
+        System.out.println(temp1);
+
+        this.serverSessionCode = temp1;
+
+        
+        
+        
+        return true;
     }
 }
