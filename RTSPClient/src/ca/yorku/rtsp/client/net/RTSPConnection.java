@@ -28,6 +28,7 @@ public class RTSPConnection {
     private final PrintWriter controlWriter;
     private final BufferedReader controlReader;
     private RTSPResponse response = null;
+    private int cSeq = 1;
 
     // =========================
     // RTP (Data) - UDP Socket Fields
@@ -35,6 +36,7 @@ public class RTSPConnection {
     private DatagramSocket videoSocket = null;
     private static final int BUFFER_LENGTH = 0x10000;
     RTPReceivingThread videoThread = new RTPReceivingThread();
+    private boolean paused;
 
     /**
      * Establishes a new connection with an RTSP server. No message is
@@ -81,22 +83,22 @@ public class RTSPConnection {
         try {
             videoSocket = new DatagramSocket();
             videoSocket.setSoTimeout(2000);
-            int dataPort = videoSocket.getLocalPort();
-            controlWriter.println(String.format("SETUP movie1.Mjpeg RTSP/1.0\nCSeq: 1\nTransport: RTP/UDP; client_port=%d\r\n",
-                    dataPort)); // TODO: Add `videoName` parameter to the request
+            controlWriter.println(String.format("SETUP %s RTSP/1.0\nCSeq: %d\nTransport: RTP/UDP; client_port=%d\r\n",
+                    videoName, cSeq++, videoSocket.getLocalPort()));
         } catch (IOException e) {
             throw new RTSPException("RTP connection failed: " + e.getMessage());
         }
 
         try {
             response = readRTSPResponse();
+            validateResponse();
         } catch (Exception e) {
             throw new RTSPException("Unable to receive response from server: " + e.getMessage());
         }
     }
 
     /**
-     * Starts (or resumes) the playback of a set up stream. This
+     * Starts (or resumes) the playback of a setup stream. This
      * method is responsible for sending the request, receiving the
      * response and, in case of a successful response, starting a
      * separate thread responsible for receiving RTP packets with
@@ -108,32 +110,23 @@ public class RTSPConnection {
      *                       did not return a successful response.
      */
     public synchronized void play() throws RTSPException {
-        // videoSocket // is our socket .
-        String request = "PLAY movie1.Mjpeg RTSP/1.0\nCSeq: 2\n" + response.getResponseMessage() + "\n";
-
-        System.out.println("Play Request Sent: \n" + request);
+        paused = false;
+        String request = generateRequest("PLAY");
         controlWriter.println(request);
 
         try {
-            System.out.println("PLAY Response Receieved:\n");
-            System.out.println("1." + controlReader.readLine()); // I think is
-            System.out.println("2." + controlReader.readLine());
-            System.out.println("3." + controlReader.readLine());
-            System.out.println("4." + controlReader.readLine());
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            // TODO: handle exception
+            response = readRTSPResponse();
+            validateResponse();
+        } catch (IOException e) {
+            throw new RTSPException(e);
         }
-        System.out.println("Thread started: " + Thread.currentThread().getName());
-        System.out.println("Active thread count: " + Thread.activeCount());
-        videoThread.start();
-        // System.out.println("Active thread count: " + Thread.activeCount());
-        // Thread.getAllStackTraces().keySet().forEach(t ->
-        // System.out.println("Thread: " + t.getName() + " State: " + t.getState()));
-        // System.out.println(videdoThread.isAlive());
-        // TODO
 
+        if (videoThread == null || !videoThread.isAlive()) {
+            System.out.println("Thread started: " + Thread.currentThread().getName());
+            System.out.println("Active thread count: " + Thread.activeCount());
+            videoThread = new RTPReceivingThread();
+            videoThread.start();
+        }
     }
 
     private class RTPReceivingThread extends Thread {
@@ -158,26 +151,30 @@ public class RTSPConnection {
             Frame f = null;
             byte[] buffer = new byte[BUFFER_LENGTH];
             DatagramPacket packet = new DatagramPacket(buffer, BUFFER_LENGTH);
-            try {
-                videoSocket.receive(packet);
-                f = parseRTPPacket(packet);
-                while (f.getPayloadLength() != 0) {
+
+            while (!Thread.interrupted()) {
+                try {
                     videoSocket.receive(packet);
                     f = parseRTPPacket(packet);
+
+                    if (f.getPayloadLength() == 0) {
+                        session.videoEnded(cSeq);
+                        break;
+                    }
+
                     session.processReceivedFrame(f);
+                } catch (SocketTimeoutException e) {
+                    if (paused) System.out.println("Timeout expected.");
+                    else throw new RuntimeException(e);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
                 }
-            } catch (Exception e) {
-                e.printStackTrace();
-
-                // TODO: handle exception
             }
-            // TODO
         }
-
     }
 
     /**
-     * Pauses the playback of a set up stream. This method is
+     * Pauses the playback of a setup stream. This method is
      * responsible for sending the request, receiving the response
      * and, in case of a successful response, stopping the thread
      * responsible for receiving RTP packets with frames.
@@ -187,12 +184,23 @@ public class RTSPConnection {
      *                       did not return a successful response.
      */
     public synchronized void pause() throws RTSPException {
+        paused = true;
+        controlWriter.println(generateRequest("PAUSE"));
 
-        // TODO
+        try {
+            response = readRTSPResponse();
+            validateResponse();
+        } catch (IOException e) {
+            throw new RTSPException(e);
+        }
+
+        if (videoThread != null && videoThread.isAlive()) {
+            videoThread.interrupt();
+        }
     }
 
     /**
-     * Terminates a set up stream. This method is responsible for
+     * Terminates a setup stream. This method is responsible for
      * sending the request, receiving the response and, in case of a
      * successful response, closing the RTP socket. This method does
      * not close the RTSP connection, and a further SETUP in the same
@@ -206,8 +214,7 @@ public class RTSPConnection {
      *                       did not return a successful response.
      */
     public synchronized void teardown() throws RTSPException {
-
-        // TODO
+//        controlWriter.print(generateRequest("TEARDOWN"));
     }
 
     /**
@@ -280,15 +287,37 @@ public class RTSPConnection {
      */
     public RTSPResponse readRTSPResponse() throws IOException, RTSPException {
         try {
-            System.out.println("Reading in RTSP response");
-            String version = controlReader.readLine();
-            String responseCode = controlReader.readLine().split(": ")[1];
-            String message = controlReader.readLine();
-            return new RTSPResponse(version, Integer.parseInt(responseCode), message);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+            String line;
+            RTSPResponse response = null;
 
-        return null; // Replace with a proper RTSPResponse
+            while ((line = controlReader.readLine()) != null && !line.trim().isEmpty()) {
+                String[] data = line.split(": ");
+                if (data.length == 1 && line.contains("RTSP")) {
+                    String[] metadata = line.split(" ");
+                    response = new RTSPResponse(metadata[0], Integer.parseInt(metadata[1]), metadata[2]);
+                } else if (data.length == 2 && response != null) {
+                    response.addHeaderValue(data[0], data[1]);
+                } else {
+                    throw new RTSPException("The response does not match the expected format.");
+                }
+            }
+
+            return response;
+        } catch (IOException e) {
+            throw new RTSPException(e);
+        }
+    }
+
+    private String generateRequest(String operation) {
+        String request = String.format("%s %s RTSP/1.0\nCSeq: %d\nSession: %s\r\n",
+                operation, session.getVideoName(), cSeq++, response.getHeaderValue("session"));
+        System.out.println(request);
+        return request;
+    }
+
+    private void validateResponse() throws RTSPException {
+        if (response == null || response.getResponseCode() != 200) {
+            throw new RTSPException("RTSP request failed: " + response);
+        }
     }
 }
