@@ -13,27 +13,28 @@ import ca.yorku.rtsp.client.model.Session;
 
 import java.io.*;
 import java.net.*;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 
 /**
  * This class represents a connection with an RTSP server.
  */
 public class RTSPConnection {
 
-    private static final int BUFFER_LENGTH = 0x10000;
+    // =========================
+    // RTSP (Control) - TCP Socket Fields
+    // =========================
+    // To avoid confusion between RTSP and RTP, use "control" and "data" for variable names
+    private final Socket controlSocket;
     private final Session session;
-    private Socket connectionSocket;
-    private PrintWriter cOut;
-    private BufferedReader cIn;
+    private final PrintWriter controlWriter;
+    private final BufferedReader controlReader;
     private RTSPResponse response = null;
+
+    // =========================
+    // RTP (Data) - UDP Socket Fields
+    // =========================
     private DatagramSocket videoSocket = null;
-    RTPReceivingThread videdoThread = new RTPReceivingThread();
-
-    // private PrintWriter vOut;
-    // private BufferedReader vIn;
-
-    // TODO Add additional fields, if necessary
+    private static final int BUFFER_LENGTH = 0x10000;
+    RTPReceivingThread videoThread = new RTPReceivingThread();
 
     /**
      * Establishes a new connection with an RTSP server. No message is
@@ -47,19 +48,14 @@ public class RTSPConnection {
      *                       are invalid or there is no connectivity.
      */
     public RTSPConnection(Session session, String server, int port) throws RTSPException {
-        System.out.printf("session : %s \n Server : %s \n Port: %d \n ", session, server, port);
-
         try {
-            connectionSocket = new Socket(server, port);
-            cIn = new BufferedReader(new InputStreamReader(connectionSocket.getInputStream()));
-            cOut = new PrintWriter(connectionSocket.getOutputStream(), true);
+            controlSocket = new Socket(server, port);
+            controlReader = new BufferedReader(new InputStreamReader(controlSocket.getInputStream()));
+            controlWriter = new PrintWriter(controlSocket.getOutputStream(), true);
         } catch (IOException e) {
-            throw new RTSPException("Could not connect" + e.getMessage());
+            throw new RTSPException("RTSP connection failed: " + e.getMessage());
         }
         this.session = session;
-        // session.get
-
-        // TODO
     }
 
     /**
@@ -81,38 +77,22 @@ public class RTSPConnection {
      *                       server did not return a successful
      *                       response.
      */
-
-    // TO DO make port random
-
     public synchronized void setup(String videoName) throws RTSPException {
-        int dataport = 0 ;
-        while (videoSocket == null) {
-            try {
-                videoSocket = new DatagramSocket();
-                videoSocket.setSoTimeout(2000);
-                dataport = videoSocket.getLocalPort();
-                // If the socket is created successfully, it means the port is available
-            } catch (Exception e) {
-                e.printStackTrace();
-                // If there is an exception, the port is already in use
-            }
+        try {
+            videoSocket = new DatagramSocket();
+            videoSocket.setSoTimeout(2000);
+            int dataPort = videoSocket.getLocalPort();
+            controlWriter.println(String.format("SETUP movie1.Mjpeg RTSP/1.0\nCSeq: 1\nTransport: RTP/UDP; client_port=%d\r\n",
+                    dataPort)); // TODO: Add `videoName` parameter to the request
+        } catch (IOException e) {
+            throw new RTSPException("RTP connection failed: " + e.getMessage());
         }
-        String request = "SETUP movie1.Mjpeg RTSP/1.0\nCSeq: 1\nTransport: RTP/UDP; client_port=" + dataport + "\r\n";
-        System.out.println("SETUP request Sent: \n" + request);
 
-        cOut.println(request);
-
-        // prone to bug here!! just leaving it for now - > response may not always be 3
-        // lines
         try {
             response = readRTSPResponse();
-            System.out.println("SETUP Response Receieved:\n" + response);
         } catch (Exception e) {
-            e.printStackTrace();
-            // TODO: handle exception
+            throw new RTSPException("Unable to receive response from server: " + e.getMessage());
         }
-
-        // TODO
     }
 
     /**
@@ -132,14 +112,14 @@ public class RTSPConnection {
         String request = "PLAY movie1.Mjpeg RTSP/1.0\nCSeq: 2\n" + response.getResponseMessage() + "\n";
 
         System.out.println("Play Request Sent: \n" + request);
-        cOut.println(request);
+        controlWriter.println(request);
 
         try {
             System.out.println("PLAY Response Receieved:\n");
-            System.out.println("1." + cIn.readLine()); // I think is
-            System.out.println("2." + cIn.readLine());
-            System.out.println("3." + cIn.readLine());
-            System.out.println("4." + cIn.readLine());
+            System.out.println("1." + controlReader.readLine()); // I think is
+            System.out.println("2." + controlReader.readLine());
+            System.out.println("3." + controlReader.readLine());
+            System.out.println("4." + controlReader.readLine());
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -147,7 +127,7 @@ public class RTSPConnection {
         }
         System.out.println("Thread started: " + Thread.currentThread().getName());
         System.out.println("Active thread count: " + Thread.activeCount());
-        videdoThread.start();
+        videoThread.start();
         // System.out.println("Active thread count: " + Thread.activeCount());
         // Thread.getAllStackTraces().keySet().forEach(t ->
         // System.out.println("Thread: " + t.getName() + " State: " + t.getState()));
@@ -294,20 +274,16 @@ public class RTSPConnection {
      * is made public to facilitate testing.
      *
      * @return An RTSPResponse object if the response was read
-     *         completely, or null if the end of the stream was reached.
+     * completely, or null if the end of the stream was reached.
      * @throws IOException   In case of an I/O error, such as loss of connectivity.
      * @throws RTSPException If the response doesn't match the expected format.
      */
-
-    // We need to deal with the issue of maybe not getting 3 lines
     public RTSPResponse readRTSPResponse() throws IOException, RTSPException {
-        // TODO
-
         try {
             System.out.println("Reading in RTSP response");
-            String version = cIn.readLine();
-            String responseCode = cIn.readLine().split(": ")[1];
-            String message = cIn.readLine();
+            String version = controlReader.readLine();
+            String responseCode = controlReader.readLine().split(": ")[1];
+            String message = controlReader.readLine();
             return new RTSPResponse(version, Integer.parseInt(responseCode), message);
         } catch (IOException e) {
             e.printStackTrace();
@@ -315,5 +291,4 @@ public class RTSPConnection {
 
         return null; // Replace with a proper RTSPResponse
     }
-
 }
