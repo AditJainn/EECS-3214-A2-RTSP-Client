@@ -29,6 +29,8 @@ public class RTSPConnection {
     private final BufferedReader controlReader;
     private RTSPResponse response = null;
     private int cSeq = 1;
+    private boolean paused;
+
 
     // =========================
     // RTP (Data) - UDP Socket Fields
@@ -36,7 +38,6 @@ public class RTSPConnection {
     private DatagramSocket videoSocket = null;
     private static final int BUFFER_LENGTH = 0x10000;
     RTPReceivingThread videoThread = new RTPReceivingThread();
-    private boolean paused;
 
     /**
      * Establishes a new connection with an RTSP server. No message is
@@ -110,6 +111,11 @@ public class RTSPConnection {
      *                       did not return a successful response.
      */
     public synchronized void play() throws RTSPException {
+        // if 
+        if (videoSocket == null){ // deals with non-setup movie play requests.
+            System.out.println("NO MOVIE HAS BEEN SET UP");
+            return;
+        }
         paused = false;
         String request = generateRequest("PLAY");
         controlWriter.println(request);
@@ -184,6 +190,15 @@ public class RTSPConnection {
      *                       did not return a successful response.
      */
     public synchronized void pause() throws RTSPException {
+        if (videoSocket == null){
+            System.out.println("NO MOVIE HAS BEEN SET UP");
+            return;
+        }
+        else if( paused ){
+            System.out.println("Movie has alraedy been paused");
+            return;
+        }
+
         paused = true;
         controlWriter.println(generateRequest("PAUSE"));
 
@@ -214,7 +229,8 @@ public class RTSPConnection {
      *                       did not return a successful response.
      */
     public synchronized void teardown() throws RTSPException {
-        if (response == null) return;
+        if (response == null || videoSocket == null) return;
+        
 
         controlWriter.println(generateRequest("TEARDOWN"));
 
@@ -252,6 +268,8 @@ public class RTSPConnection {
                 controlSocket.close();
                 System.out.println("RTSP control socket closed.");
             }
+            
+
         } catch (IOException e) {
             System.err.println("Failed to close RTSP control socket - " + e.getMessage());
         }
@@ -294,20 +312,6 @@ public class RTSPConnection {
         int headerSize = 12 + (csrcCount * 4);
         byte[] payload = new byte[packet.getLength() - headerSize];
         System.arraycopy(data, headerSize, payload, 0, payload.length);
-
-        // // Step 5: Print RTP Header Info
-        // System.out.println("Received RTP Packet:");
-        // // System.out.println("Version: " + version);
-        // // System.out.println("Padding: " + padding);
-        // // System.out.println("Extension: " + extension);
-        // // System.out.println("CSRC Count: " + csrcCount);
-        // System.out.println("Marker: " + marker);
-        // System.out.println("Payload Type: " + payloadType);
-        // System.out.println("Sequence Number: " + sequenceNumber);
-        // System.out.println("Timestamp: " + timestamp);
-        // // System.out.println("SSRC: " + ssrc);
-        // System.out.println("Payload Size: " + payload.length);
-        // System.out.println("--------------------------------");
         Frame f = new Frame(payloadType, marker, sequenceNumber, timestamp, payload);
 
         // TODO
