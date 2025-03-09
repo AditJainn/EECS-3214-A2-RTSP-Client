@@ -85,15 +85,15 @@ public class RTSPConnection {
     // TO DO make port random
 
     public synchronized void setup(String videoName) throws RTSPException {
-        int randomPort = (int) (Math.random() * (6000)) + 1024;
+        int dataport ;
         while (videoSocket == null) {
             try {
-                videoSocket = new DatagramSocket(randomPort);
+                videoSocket = new DatagramSocket();
                 videoSocket.setSoTimeout(2000);
+                dataport = videoSocket.getLocalPort();
                 // If the socket is created successfully, it means the port is available
             } catch (Exception e) {
-                randomPort = (int) (Math.random() * (6000)) + 1024;
-                videoSocket = null;
+                e.printStackTrace();
                 // If there is an exception, the port is already in use
             }
         }
