@@ -88,6 +88,7 @@ public class RTSPConnection {
             teardown();
         }
         try {
+            this.movieCompleted = false;
             videoSocket = new DatagramSocket();
             videoSocket.setSoTimeout(2000);
             controlWriter.println(String.format("SETUP %s RTSP/1.0\nCSeq: %d\nTransport: RTP/UDP; client_port=%d\r\n",
