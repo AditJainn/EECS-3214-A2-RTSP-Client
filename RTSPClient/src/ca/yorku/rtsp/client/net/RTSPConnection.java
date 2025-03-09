@@ -23,13 +23,15 @@ public class RTSPConnection {
 
     private static final int BUFFER_LENGTH = 0x10000;
     private final Session session;
-    private Socket connectionSocket; 
+    private Socket connectionSocket;
     private PrintWriter cOut;
     private BufferedReader cIn;
-    
+    private RTSPResponse response = null;
+    private DatagramSocket videoSocket = null;
+    RTPReceivingThread videdoThread = new RTPReceivingThread();
+
     // private PrintWriter vOut;
     // private BufferedReader vIn;
-
 
     // TODO Add additional fields, if necessary
 
@@ -45,7 +47,7 @@ public class RTSPConnection {
      *                       are invalid or there is no connectivity.
      */
     public RTSPConnection(Session session, String server, int port) throws RTSPException {
-        System.out.printf("session : %s \n Server : %s \n Port: %d \n ",session,server,port);
+        System.out.printf("session : %s \n Server : %s \n Port: %d \n ", session, server, port);
 
         try {
             connectionSocket = new Socket(server, port);
@@ -55,6 +57,7 @@ public class RTSPConnection {
             throw new RTSPException("Could not connect" + e.getMessage());
         }
         this.session = session;
+        // session.get
 
         // TODO
     }
@@ -79,37 +82,35 @@ public class RTSPConnection {
      *                       response.
      */
 
-    //  TO DO make port random 
+    // TO DO make port random
 
     public synchronized void setup(String videoName) throws RTSPException {
-        DatagramSocket videoSocket = null; 
-        RTSPResponse response = null;
-        int randomPort = (int) (Math.random() * (6000)) + 1024;
-        while (videoSocket == null){
+        int dataport = 0 ;
+        while (videoSocket == null) {
             try {
-                videoSocket = new DatagramSocket(randomPort);
+                videoSocket = new DatagramSocket();
                 videoSocket.setSoTimeout(2000);
+                dataport = videoSocket.getLocalPort();
                 // If the socket is created successfully, it means the port is available
             } catch (Exception e) {
-                randomPort = (int) (Math.random() * (6000)) + 1024;
-                videoSocket = null;
+                e.printStackTrace();
                 // If there is an exception, the port is already in use
-            } 
+            }
         }
+        String request = "SETUP movie1.Mjpeg RTSP/1.0\nCSeq: 1\nTransport: RTP/UDP; client_port=" + dataport + "\r\n";
+        System.out.println("SETUP request Sent: \n" + request);
 
-        String request = "SETUP movie1.Mjpeg RTSP/1.0\nCSeq: 1\nTransport: RTP/UDP; client_port="+randomPort+"\r\n";
         cOut.println(request);
 
-        // prone to bug here!! just leaving it for now - > response may not always be 3 lines
-
+        // prone to bug here!! just leaving it for now - > response may not always be 3
+        // lines
         try {
             response = readRTSPResponse();
-
+            System.out.println("SETUP Response Receieved:\n" + response);
         } catch (Exception e) {
+            e.printStackTrace();
             // TODO: handle exception
         }
-
-
 
         // TODO
     }
@@ -127,11 +128,36 @@ public class RTSPConnection {
      *                       did not return a successful response.
      */
     public synchronized void play() throws RTSPException {
+        // videoSocket // is our socket .
+        String request = "PLAY movie1.Mjpeg RTSP/1.0\nCSeq: 2\n" + response.getResponseMessage() + "\n";
 
+        System.out.println("Play Request Sent: \n" + request);
+        cOut.println(request);
+
+        try {
+            System.out.println("PLAY Response Receieved:\n");
+            System.out.println("1." + cIn.readLine()); // I think is
+            System.out.println("2." + cIn.readLine());
+            System.out.println("3." + cIn.readLine());
+            System.out.println("4." + cIn.readLine());
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            // TODO: handle exception
+        }
+        System.out.println("Thread started: " + Thread.currentThread().getName());
+        System.out.println("Active thread count: " + Thread.activeCount());
+        videdoThread.start();
+        // System.out.println("Active thread count: " + Thread.activeCount());
+        // Thread.getAllStackTraces().keySet().forEach(t ->
+        // System.out.println("Thread: " + t.getName() + " State: " + t.getState()));
+        // System.out.println(videdoThread.isAlive());
         // TODO
+
     }
 
     private class RTPReceivingThread extends Thread {
+
         /**
          * Continuously receives RTP packets until the thread is
          * cancelled or until an RTP packet is received with a
@@ -148,7 +174,23 @@ public class RTSPConnection {
          */
         @Override
         public void run() {
+            System.out.println("Thread started: " + Thread.currentThread().getName());
+            Frame f = null;
+            byte[] buffer = new byte[BUFFER_LENGTH];
+            DatagramPacket packet = new DatagramPacket(buffer, BUFFER_LENGTH);
+            try {
+                videoSocket.receive(packet);
+                f = parseRTPPacket(packet);
+                while (f.getPayloadLength() != 0) {
+                    videoSocket.receive(packet);
+                    f = parseRTPPacket(packet);
+                    session.processReceivedFrame(f);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
 
+                // TODO: handle exception
+            }
             // TODO
         }
 
@@ -208,11 +250,43 @@ public class RTSPConnection {
      * @return A Frame object.
      */
     public static Frame parseRTPPacket(DatagramPacket packet) {
+        byte[] data = packet.getData();
+        int version = (data[0] >> 6) & 0b11; // First 2 bits
+        int padding = (data[0] >> 5) & 0b1; // Next bit
+        int extension = (data[0] >> 4) & 0b1; // Next bit
+        int csrcCount = data[0] & 0b1111; // Last 4 bits
+        boolean marker = ((data[1] >> 7) & 0b1) == 1; // First bit of second byte
+        byte payloadType = (byte) (data[1] & 0b01111111);
+        short sequenceNumber = (short) (((data[2] & 0xFF) << 8) | (data[3] & 0xFF));
+        int timestamp = ((data[4] & 0xFF) << 24) | ((data[5] & 0xFF) << 16) | ((data[6] & 0xFF) << 8)
+                | ((data[7] & 0xFF));
+        long ssrc = ((long) (data[8] & 0xFF) << 24) | ((long) (data[9] & 0xFF) << 16) |
+                ((long) (data[10] & 0xFF) << 8) | ((long) (data[11] & 0xFF));
+
+        // Step 4: Extract Payload (Skipping RTP Header: 12 bytes + CSRC count * 4
+        // bytes)
+        int headerSize = 12 + (csrcCount * 4);
+        byte[] payload = new byte[packet.getLength() - headerSize];
+        System.arraycopy(data, headerSize, payload, 0, payload.length);
+
+        // // Step 5: Print RTP Header Info
+        // System.out.println("Received RTP Packet:");
+        // // System.out.println("Version: " + version);
+        // // System.out.println("Padding: " + padding);
+        // // System.out.println("Extension: " + extension);
+        // // System.out.println("CSRC Count: " + csrcCount);
+        // System.out.println("Marker: " + marker);
+        // System.out.println("Payload Type: " + payloadType);
+        // System.out.println("Sequence Number: " + sequenceNumber);
+        // System.out.println("Timestamp: " + timestamp);
+        // // System.out.println("SSRC: " + ssrc);
+        // System.out.println("Payload Size: " + payload.length);
+        // System.out.println("--------------------------------");
+        Frame f = new Frame(payloadType, marker, sequenceNumber, timestamp, payload);
 
         // TODO
-        return null;
+        return f;
     }
-
 
     /**
      * Reads and parses an RTSP response from the socket's input. This
@@ -225,22 +299,20 @@ public class RTSPConnection {
      * @throws RTSPException If the response doesn't match the expected format.
      */
 
-
-    // We need to deal with the issue of maybe not getting 3 lines 
+    // We need to deal with the issue of maybe not getting 3 lines
     public RTSPResponse readRTSPResponse() throws IOException, RTSPException {
         // TODO
 
-        try{
+        try {
             System.out.println("Reading in RTSP response");
             String version = cIn.readLine();
             String responseCode = cIn.readLine().split(": ")[1];
             String message = cIn.readLine();
-            return new RTSPResponse(version,Integer.parseInt(responseCode),message);
-        }    
-        catch(IOException e) {
+            return new RTSPResponse(version, Integer.parseInt(responseCode), message);
+        } catch (IOException e) {
             e.printStackTrace();
-        }   
-    
+        }
+
         return null; // Replace with a proper RTSPResponse
     }
 
