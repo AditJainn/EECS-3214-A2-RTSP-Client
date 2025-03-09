@@ -28,6 +28,7 @@ public class RTSPConnection {
     private BufferedReader cIn;
     private RTSPResponse response = null;
     private DatagramSocket videoSocket = null;
+    RTPReceivingThread videdoThread = new RTPReceivingThread();
 
     // private PrintWriter vOut;
     // private BufferedReader vIn;
@@ -97,15 +98,15 @@ public class RTSPConnection {
             }
         }
         String request = "SETUP movie1.Mjpeg RTSP/1.0\nCSeq: 1\nTransport: RTP/UDP; client_port=" + randomPort + "\r\n";
-        System.out.println("SETUP request Sent: \n"+request);
-        
+        System.out.println("SETUP request Sent: \n" + request);
+
         cOut.println(request);
 
         // prone to bug here!! just leaving it for now - > response may not always be 3
         // lines
         try {
             response = readRTSPResponse();
-            System.out.println("SETUP Response Receieved:\n" +response);
+            System.out.println("SETUP Response Receieved:\n" + response);
         } catch (Exception e) {
             e.printStackTrace();
             // TODO: handle exception
@@ -128,36 +129,29 @@ public class RTSPConnection {
      */
     public synchronized void play() throws RTSPException {
         // videoSocket // is our socket .
-        String request = "PLAY movie1.Mjpeg RTSP/1.0\nCSeq: 2\n"+response.getResponseMessage()+"\n";
+        String request = "PLAY movie1.Mjpeg RTSP/1.0\nCSeq: 2\n" + response.getResponseMessage() + "\n";
 
-        System.out.println("Play Request Sent: \n"+ request);
+        System.out.println("Play Request Sent: \n" + request);
         cOut.println(request);
-        
+
         try {
-            System.out.println("PLAY Response Receieved:\n" );
-            System.out.println("1."+cIn.readLine());
-            System.out.println("2."+cIn.readLine());
-            System.out.println("3."+cIn.readLine());
-            System.out.println("4."+cIn.readLine());
+            System.out.println("PLAY Response Receieved:\n");
+            System.out.println("1." + cIn.readLine()); // I think is
+            System.out.println("2." + cIn.readLine());
+            System.out.println("3." + cIn.readLine());
+            System.out.println("4." + cIn.readLine());
 
         } catch (Exception e) {
             e.printStackTrace();
             // TODO: handle exception
         }
-
-
-        try {
-        byte[] buffer = new byte[BUFFER_LENGTH];
-        DatagramPacket packet = new DatagramPacket(buffer, BUFFER_LENGTH);
-        videoSocket.receive(packet);
-        Frame f = parseRTPPacket(packet); 
-        session.processReceivedFrame(f);
-        } catch (Exception e) {
-            e.printStackTrace();
-            
-            // TODO: handle exception
-        }
-        
+        System.out.println("Thread started: " + Thread.currentThread().getName());
+        System.out.println("Active thread count: " + Thread.activeCount());
+        videdoThread.start();
+        // System.out.println("Active thread count: " + Thread.activeCount());
+        // Thread.getAllStackTraces().keySet().forEach(t ->
+        // System.out.println("Thread: " + t.getName() + " State: " + t.getState()));
+        // System.out.println(videdoThread.isAlive());
         // TODO
 
     }
@@ -180,7 +174,23 @@ public class RTSPConnection {
          */
         @Override
         public void run() {
+            System.out.println("Thread started: " + Thread.currentThread().getName());
+            Frame f = null;
+            byte[] buffer = new byte[BUFFER_LENGTH];
+            DatagramPacket packet = new DatagramPacket(buffer, BUFFER_LENGTH);
+            try {
+                videoSocket.receive(packet);
+                f = parseRTPPacket(packet);
+                while (f.getPayloadLength() != 0) {
+                    videoSocket.receive(packet);
+                    f = parseRTPPacket(packet);
+                    session.processReceivedFrame(f);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
 
+                // TODO: handle exception
+            }
             // TODO
         }
 
@@ -242,37 +252,38 @@ public class RTSPConnection {
     public static Frame parseRTPPacket(DatagramPacket packet) {
         byte[] data = packet.getData();
         int version = (data[0] >> 6) & 0b11; // First 2 bits
-        int padding = (data[0] >> 5) & 0b1;  // Next bit
+        int padding = (data[0] >> 5) & 0b1; // Next bit
         int extension = (data[0] >> 4) & 0b1; // Next bit
-        int csrcCount = data[0] & 0b1111;    // Last 4 bits
-        boolean marker = ((data[1] >> 7) & 0b1)==1;  // First bit of second byte
+        int csrcCount = data[0] & 0b1111; // Last 4 bits
+        boolean marker = ((data[1] >> 7) & 0b1) == 1; // First bit of second byte
         byte payloadType = (byte) (data[1] & 0b01111111);
         short sequenceNumber = (short) (((data[2] & 0xFF) << 8) | (data[3] & 0xFF));
-        int timestamp = ((data[4] & 0xFF) << 24) | ((data[5] & 0xFF) << 16) | ((data[6] & 0xFF) << 8)  | ((data[7] & 0xFF));
-        long ssrc = ((long)(data[8] & 0xFF) << 24) | ((long)(data[9] & 0xFF) << 16) |
-                    ((long)(data[10] & 0xFF) << 8)  | ((long)(data[11] & 0xFF));
+        int timestamp = ((data[4] & 0xFF) << 24) | ((data[5] & 0xFF) << 16) | ((data[6] & 0xFF) << 8)
+                | ((data[7] & 0xFF));
+        long ssrc = ((long) (data[8] & 0xFF) << 24) | ((long) (data[9] & 0xFF) << 16) |
+                ((long) (data[10] & 0xFF) << 8) | ((long) (data[11] & 0xFF));
 
-        // Step 4: Extract Payload (Skipping RTP Header: 12 bytes + CSRC count * 4 bytes)
+        // Step 4: Extract Payload (Skipping RTP Header: 12 bytes + CSRC count * 4
+        // bytes)
         int headerSize = 12 + (csrcCount * 4);
         byte[] payload = new byte[packet.getLength() - headerSize];
         System.arraycopy(data, headerSize, payload, 0, payload.length);
 
-        // Step 5: Print RTP Header Info
-        System.out.println("Received RTP Packet:");
-        System.out.println("Version: " + version);
-        System.out.println("Padding: " + padding);
-        System.out.println("Extension: " + extension);
-        System.out.println("CSRC Count: " + csrcCount);
-        System.out.println("Marker: " + marker);
-        System.out.println("Payload Type: " + payloadType);
-        System.out.println("Sequence Number: " + sequenceNumber);
-        System.out.println("Timestamp: " + timestamp);
-        System.out.println("SSRC: " + ssrc);
-        System.out.println("Payload Size: " + payload.length);
-        System.out.println("--------------------------------");
-        Frame f = new Frame(payloadType,marker,sequenceNumber,timestamp,payload);
+        // // Step 5: Print RTP Header Info
+        // System.out.println("Received RTP Packet:");
+        // // System.out.println("Version: " + version);
+        // // System.out.println("Padding: " + padding);
+        // // System.out.println("Extension: " + extension);
+        // // System.out.println("CSRC Count: " + csrcCount);
+        // System.out.println("Marker: " + marker);
+        // System.out.println("Payload Type: " + payloadType);
+        // System.out.println("Sequence Number: " + sequenceNumber);
+        // System.out.println("Timestamp: " + timestamp);
+        // // System.out.println("SSRC: " + ssrc);
+        // System.out.println("Payload Size: " + payload.length);
+        // System.out.println("--------------------------------");
+        Frame f = new Frame(payloadType, marker, sequenceNumber, timestamp, payload);
 
-        
         // TODO
         return f;
     }
