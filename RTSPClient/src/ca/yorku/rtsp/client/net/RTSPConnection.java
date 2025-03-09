@@ -97,7 +97,7 @@ public class RTSPConnection {
                 // If there is an exception, the port is already in use
             }
         }
-        String request = "SETUP movie1.Mjpeg RTSP/1.0\nCSeq: 1\nTransport: RTP/UDP; client_port=" + randomPort + "\r\n";
+        String request = "SETUP movie1.Mjpeg RTSP/1.0\nCSeq: 1\nTransport: RTP/UDP; client_port=" + dataport + "\r\n";
         System.out.println("SETUP request Sent: \n" + request);
 
         cOut.println(request);
