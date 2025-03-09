@@ -34,7 +34,6 @@ public class RTSPConnection {
     // RTP (Data) - UDP Socket Fields
     // =========================
     private DatagramSocket videoSocket = null;
-    private int dataPort;
     private static final int BUFFER_LENGTH = 0x10000;
     RTPReceivingThread videoThread = new RTPReceivingThread();
 
@@ -83,9 +82,8 @@ public class RTSPConnection {
         try {
             videoSocket = new DatagramSocket();
             videoSocket.setSoTimeout(2000);
-            dataPort = videoSocket.getLocalPort();
-            controlWriter.println(String.format("SETUP movie1.Mjpeg RTSP/1.0\nCSeq: " + (cSeq++) + "\nTransport: RTP/UDP; client_port=%d\r\n",
-                    dataPort)); // TODO: Add `videoName` parameter to the request
+            controlWriter.println(String.format("SETUP %s RTSP/1.0\nCSeq: %d\nTransport: RTP/UDP; client_port=%d\r\n",
+                    videoName, cSeq++, videoSocket.getLocalPort()));
         } catch (IOException e) {
             throw new RTSPException("RTP connection failed: " + e.getMessage());
         }
@@ -287,21 +285,30 @@ public class RTSPConnection {
      */
     public RTSPResponse readRTSPResponse() throws IOException, RTSPException {
         try {
-            System.out.println("Reading in RTSP response");
-            String version = controlReader.readLine();
-            String responseCode = controlReader.readLine().split(": ")[1];
-            String message = controlReader.readLine();
-            return new RTSPResponse(version, Integer.parseInt(responseCode), message);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+            String line;
+            RTSPResponse response = null;
 
-        return null; // Replace with a proper RTSPResponse
+            while ((line = controlReader.readLine()) != null && !line.trim().isEmpty()) {
+                String[] data = line.split(": ");
+                if (data.length == 1 && line.contains("RTSP")) {
+                    String[] metadata = line.split(" ");
+                    response = new RTSPResponse(metadata[0], Integer.parseInt(metadata[1]), metadata[2]);
+                } else if (data.length == 2 && response != null) {
+                    response.addHeaderValue(data[0], data[1]);
+                } else {
+                    throw new RTSPException("The response does not match the expected format.");
+                }
+            }
+
+            return response;
+        } catch (IOException e) {
+            throw new RTSPException(e);
+        }
     }
 
     private String generateRequest(String operation) {
-        String request = String.format("%s %s RTSP/1.0\nCSeq: %d\n%s\r\n",
-                operation, session.getVideoName(), cSeq++, response.getResponseMessage());
+        String request = String.format("%s %s RTSP/1.0\nCSeq: %d\nSession: %s\r\n",
+                operation, session.getVideoName(), cSeq++, response.getHeaderValue("session"));
         System.out.println(request);
         return request;
     }
