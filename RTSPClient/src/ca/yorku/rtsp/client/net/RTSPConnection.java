@@ -36,6 +36,7 @@ public class RTSPConnection {
     private DatagramSocket videoSocket = null;
     private static final int BUFFER_LENGTH = 0x10000;
     RTPReceivingThread videoThread = new RTPReceivingThread();
+    private boolean paused;
 
     /**
      * Establishes a new connection with an RTSP server. No message is
@@ -109,6 +110,7 @@ public class RTSPConnection {
      *                       did not return a successful response.
      */
     public synchronized void play() throws RTSPException {
+        paused = false;
         String request = generateRequest("PLAY");
         controlWriter.println(request);
 
@@ -119,9 +121,12 @@ public class RTSPConnection {
             throw new RTSPException(e);
         }
 
-        System.out.println("Thread started: " + Thread.currentThread().getName());
-        System.out.println("Active thread count: " + Thread.activeCount());
-        videoThread.start();
+        if (videoThread == null || !videoThread.isAlive()) {
+            System.out.println("Thread started: " + Thread.currentThread().getName());
+            System.out.println("Active thread count: " + Thread.activeCount());
+            videoThread = new RTPReceivingThread();
+            videoThread.start();
+        }
     }
 
     private class RTPReceivingThread extends Thread {
@@ -146,22 +151,26 @@ public class RTSPConnection {
             Frame f = null;
             byte[] buffer = new byte[BUFFER_LENGTH];
             DatagramPacket packet = new DatagramPacket(buffer, BUFFER_LENGTH);
-            try {
-                videoSocket.receive(packet);
-                f = parseRTPPacket(packet);
-                while (f.getPayloadLength() != 0) {
+
+            while (!Thread.interrupted()) {
+                try {
                     videoSocket.receive(packet);
                     f = parseRTPPacket(packet);
+
+                    if (f.getPayloadLength() == 0) {
+                        session.videoEnded(cSeq);
+                        break;
+                    }
+
                     session.processReceivedFrame(f);
+                } catch (SocketTimeoutException e) {
+                    if (paused) System.out.println("Timeout expected.");
+                    else throw new RuntimeException(e);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
                 }
-            } catch (Exception e) {
-                e.printStackTrace();
-
-                // TODO: handle exception
             }
-            // TODO
         }
-
     }
 
     /**
@@ -175,13 +184,18 @@ public class RTSPConnection {
      *                       did not return a successful response.
      */
     public synchronized void pause() throws RTSPException {
-        controlWriter.print(generateRequest("PAUSE"));
+        paused = true;
+        controlWriter.println(generateRequest("PAUSE"));
 
         try {
             response = readRTSPResponse();
             validateResponse();
         } catch (IOException e) {
             throw new RTSPException(e);
+        }
+
+        if (videoThread != null && videoThread.isAlive()) {
+            videoThread.interrupt();
         }
     }
 
