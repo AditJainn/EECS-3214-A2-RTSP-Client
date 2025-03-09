@@ -82,7 +82,7 @@ public class RTSPConnection {
     public synchronized void setup(String videoName) throws RTSPException {
         try {
             videoSocket = new DatagramSocket();
-            videoSocket.setSoTimeout(2000);
+            videoSocket.setSoTimeout(2000); 
             int dataPort = videoSocket.getLocalPort();
             controlWriter.println(String.format("SETUP movie1.Mjpeg RTSP/1.0\nCSeq: %d\nTransport: RTP/UDP; client_port=%d\r\n",cSeq,
                     dataPort)); // TODO: Add `videoName` parameter to the request
@@ -120,7 +120,13 @@ public class RTSPConnection {
         // String request = "PLAY movie1.Mjpeg RTSP/1.0\nCSeq: 2\n" + response.getResponseMessage() + "\n";
 
         String request = String.format("PLAY movie1.Mjpeg RTSP/1.0\nCSeq: %d\n%d\n",cSeq,this.serverSessionCode);
-        System.out.println(request);
+        // Play Request Sent: 
+        // PLAY movie1.Mjpeg RTSP/1.0
+        // CSeq: 2
+        // Session: 766527
+
+
+        // System.out.println(request);
 
 
         controlWriter.println(request); // TODO: Add `videoName` parameter to the request
@@ -309,17 +315,13 @@ public class RTSPConnection {
         else{
             this.cSeq +=1 ; 
         }
-    
         String temp = controlReader.readLine();
         System.out.println(temp);
         int temp1 = Integer.parseInt(temp.split(": ")[1]);
         System.out.println(temp1);
 
         this.serverSessionCode = temp1;
-
-        
-        
-        
+        controlReader.readLine();
         return true;
     }
 }
