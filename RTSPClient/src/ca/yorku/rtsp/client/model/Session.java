@@ -10,8 +10,11 @@ package ca.yorku.rtsp.client.model;
 import ca.yorku.rtsp.client.exception.RTSPException;
 import ca.yorku.rtsp.client.net.RTSPConnection;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * This class manages an open session with an RTSP server. It provides the main interaction between the network
@@ -22,6 +25,13 @@ public class Session {
     private Set<SessionListener> sessionListeners = new HashSet<SessionListener>();
     private RTSPConnection rtspConnection;
     private String videoName = null;
+
+
+    // 
+    TreeSet<Frame> frameset = new TreeSet<>(); // represents the buffered frames
+    String clientCommand = "";
+    String sessionCommand = "";
+    boolean playingOnUI = false;
 
     /**
      * Creates a new RTSP session. This constructor will also create a new network connection with the server. No stream
@@ -67,6 +77,17 @@ public class Session {
             this.videoName = videoName;
             for (SessionListener listener : sessionListeners)
                 listener.videoNameChanged(this.videoName);
+            
+            // initial setup 
+            clientCommand = "SETUP";
+            sessionCommand = "SETUP";
+            playingOnUI = false;
+            try {
+                sessionCommand = "PLAY";
+                rtspConnection.play();
+            } catch (RTSPException e) {
+                listenerException(e);
+            }
         } catch (RTSPException e) {
             listenerException(e);
         }
@@ -80,6 +101,7 @@ public class Session {
      * stopped.
      */
     public synchronized void play() {
+        clientCommand = "PLAY";
         try {
             rtspConnection.play();
         } catch (RTSPException e) {
@@ -135,10 +157,37 @@ public class Session {
      * @param frame The recently received frame.
      */
     public synchronized void processReceivedFrame(Frame frame) {
+
+        // L
+        if (videoName == null) return;
+        if ((clientCommand.equals("SETUP")||clientCommand.equals("PAUSE")) & sessionCommand.equals("PLAY")){
+            // we want to start buffering frames
+            if (frameset.size() < 100){
+                frameset.add(frame);
+            }
+            else {
+                sessionCommand = "PAUSE";
+                pause();
+            }
+
+        }
+        //
+        if (frameset.size() == 0){
+
+        }
+            clientCommand.equals("PLAY") & sessionCommand.equals("PLAY") &  frameset.size() > 
+        frameset.size() > 
+        frameset.size()  frame.getPayloadLength()!=0){
+            displayFrames(frame);
+        }
+    }
+
+    public synchronized void displayFrames(Frame frame){
         if (videoName == null) return;
         for (SessionListener listener : sessionListeners)
             listener.frameReceived(frame);
-    }
+        }
+    
 
     /**
      * Processes a notification received from the RTSP server that the
