@@ -22,13 +22,15 @@ public class RTSPConnection {
     // =========================
     // RTSP (Control) - TCP Socket Fields
     // =========================
-    // To avoid confusion between RTSP and RTP, use "control" and "data" for variable names
+    // To avoid confusion between RTSP and RTP, use "control" and "data" for
+    // variable names
     private final Socket controlSocket;
     private final Session session;
     private final PrintWriter controlWriter;
     private final BufferedReader controlReader;
     private RTSPResponse response = null;
     private int cSeq = 1;
+    private String sessionCode = null;
 
     // =========================
     // RTP (Data) - UDP Socket Fields
@@ -95,6 +97,8 @@ public class RTSPConnection {
         } catch (Exception e) {
             throw new RTSPException("Unable to receive response from server: " + e.getMessage());
         }
+
+        // Save the session instead
     }
 
     /**
@@ -112,7 +116,10 @@ public class RTSPConnection {
     public synchronized void play() throws RTSPException {
         paused = false;
         String request = generateRequest("PLAY");
-        controlWriter.println(request);
+        // Lets say the play got an error,
+        //`
+
+        controlWriter.println(request); //
 
         try {
             response = readRTSPResponse();
@@ -164,8 +171,10 @@ public class RTSPConnection {
 
                     session.processReceivedFrame(f);
                 } catch (SocketTimeoutException e) {
-                    if (paused) System.out.println("Timeout expected.");
-                    else throw new RuntimeException(e);
+                    if (paused)
+                        System.out.println("Timeout expected.");
+                    else
+                        throw new RuntimeException(e);
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
@@ -214,8 +223,8 @@ public class RTSPConnection {
      *                       did not return a successful response.
      */
     public synchronized void teardown() throws RTSPException {
-        if (response == null) return;
-
+        if (response == null)
+            return;
         controlWriter.println(generateRequest("TEARDOWN"));
 
         try {
@@ -241,11 +250,13 @@ public class RTSPConnection {
      * such as the RTP connection and thread, if it is still open.
      */
     public synchronized void closeConnection() {
-        try {
-            teardown();
-        } catch (RTSPException e) {
-            System.err.println("Failed to teardown stream before closing connection - " + e.getMessage());
-        }
+
+        // We dont need to tear down here
+        // try {
+        //     teardown();
+        // } catch (RTSPException e) {
+        //     System.err.println("Failed to teardown stream before closing connection - " + e.getMessage());
+        // }
 
         try {
             if (controlSocket != null && !controlSocket.isClosed()) {
@@ -277,41 +288,16 @@ public class RTSPConnection {
      */
     public static Frame parseRTPPacket(DatagramPacket packet) {
         byte[] data = packet.getData();
-        int version = (data[0] >> 6) & 0b11; // First 2 bits
-        int padding = (data[0] >> 5) & 0b1; // Next bit
-        int extension = (data[0] >> 4) & 0b1; // Next bit
-        int csrcCount = data[0] & 0b1111; // Last 4 bits
         boolean marker = ((data[1] >> 7) & 0b1) == 1; // First bit of second byte
         byte payloadType = (byte) (data[1] & 0b01111111);
         short sequenceNumber = (short) (((data[2] & 0xFF) << 8) | (data[3] & 0xFF));
         int timestamp = ((data[4] & 0xFF) << 24) | ((data[5] & 0xFF) << 16) | ((data[6] & 0xFF) << 8)
                 | ((data[7] & 0xFF));
-        long ssrc = ((long) (data[8] & 0xFF) << 24) | ((long) (data[9] & 0xFF) << 16) |
-                ((long) (data[10] & 0xFF) << 8) | ((long) (data[11] & 0xFF));
-
-        // Step 4: Extract Payload (Skipping RTP Header: 12 bytes + CSRC count * 4
-        // bytes)
-        int headerSize = 12 + (csrcCount * 4);
+        int headerSize = 12 + ((data[0] & 0b1111) * 4);
         byte[] payload = new byte[packet.getLength() - headerSize];
+
         System.arraycopy(data, headerSize, payload, 0, payload.length);
-
-        // // Step 5: Print RTP Header Info
-        // System.out.println("Received RTP Packet:");
-        // // System.out.println("Version: " + version);
-        // // System.out.println("Padding: " + padding);
-        // // System.out.println("Extension: " + extension);
-        // // System.out.println("CSRC Count: " + csrcCount);
-        // System.out.println("Marker: " + marker);
-        // System.out.println("Payload Type: " + payloadType);
-        // System.out.println("Sequence Number: " + sequenceNumber);
-        // System.out.println("Timestamp: " + timestamp);
-        // // System.out.println("SSRC: " + ssrc);
-        // System.out.println("Payload Size: " + payload.length);
-        // System.out.println("--------------------------------");
-        Frame f = new Frame(payloadType, marker, sequenceNumber, timestamp, payload);
-
-        // TODO
-        return f;
+        return new Frame(payloadType, marker, sequenceNumber, timestamp, payload);
     }
 
     /**
@@ -320,7 +306,7 @@ public class RTSPConnection {
      * is made public to facilitate testing.
      *
      * @return An RTSPResponse object if the response was read
-     * completely, or null if the end of the stream was reached.
+     *         completely, or null if the end of the stream was reached.
      * @throws IOException   In case of an I/O error, such as loss of connectivity.
      * @throws RTSPException If the response doesn't match the expected format.
      */
@@ -328,19 +314,21 @@ public class RTSPConnection {
         try {
             String line;
             RTSPResponse response = null;
-
             while ((line = controlReader.readLine()) != null && !line.trim().isEmpty()) {
                 String[] data = line.split(": ");
-                if (data.length == 1 && line.contains("RTSP")) {
+                if (data.length == 1 && line.contains("RTSP")) { // # FOR SOME REASON IT IS NOT WORKING WILL COME BACK TO THIS
                     String[] metadata = line.split(" ");
                     response = new RTSPResponse(metadata[0], Integer.parseInt(metadata[1]), metadata[2]);
+                } else if (data.length == 2 && response != null && data[0].equals("Session")) {
+                    this.sessionCode = data[1];
+                    response.addHeaderValue(data[0], data[1]);
+
                 } else if (data.length == 2 && response != null) {
                     response.addHeaderValue(data[0], data[1]);
                 } else {
                     throw new RTSPException("The response does not match the expected format.");
                 }
             }
-
             return response;
         } catch (IOException e) {
             throw new RTSPException(e);
@@ -349,7 +337,7 @@ public class RTSPConnection {
 
     private String generateRequest(String operation) {
         String request = String.format("%s %s RTSP/1.0\nCSeq: %d\nSession: %s\r\n",
-                operation, session.getVideoName(), cSeq++, response.getHeaderValue("session"));
+                operation, session.getVideoName(), cSeq++, this.sessionCode);
         System.out.println(request);
         return request;
     }
