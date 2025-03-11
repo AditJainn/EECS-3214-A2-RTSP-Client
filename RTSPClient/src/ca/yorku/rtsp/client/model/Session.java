@@ -12,6 +12,7 @@ import ca.yorku.rtsp.client.net.RTSPConnection;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * This class manages an open session with an RTSP server. It provides the main
@@ -23,8 +24,11 @@ public class Session {
     private Set<SessionListener> sessionListeners = new HashSet<SessionListener>();
     private RTSPConnection rtspConnection;
     private String videoName = null;
-    private String userState = "";
-    private String sessionState = "";
+
+
+    private stateEnum userState ;
+    private stateEnum sessionState ;
+    private TreeSet<Frame> bufferedFrames = new TreeSet<>(); 
 
     /**
      * Creates a new RTSP session. This constructor will also create a new network
@@ -72,9 +76,13 @@ public class Session {
      *                  correspond to a local file in the server.
      */
     public synchronized void open(String videoName) {
+
+        this.userState = stateEnum.SETUP;
+        this.sessionState = stateEnum.SETUP;
         try {
             rtspConnection.setup(videoName);
             this.videoName = videoName;
+            this.play();
             for (SessionListener listener : sessionListeners)
                 listener.videoNameChanged(this.videoName);
         } catch (RTSPException e) {
@@ -93,6 +101,8 @@ public class Session {
      * stopped.
      */
     public synchronized void play() {
+
+        
         try {
             rtspConnection.play();
         } catch (RTSPException e) {
@@ -182,4 +192,11 @@ public class Session {
     public synchronized String getVideoName() {
         return videoName;
     }
+    enum stateEnum {
+        SETUP,
+        PLAY,
+        PAUSE,
+        CLOSE,
+        DISCONNECT
+      }
 }
