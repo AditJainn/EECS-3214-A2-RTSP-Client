@@ -149,7 +149,7 @@
           * session.processReceivedFrame() is called with the resulting
           * packet. The receiving process should be configured to
           * timeout if no RTP packet is received after two seconds. If
-          * a frame with zero-length payload is received, indicating
+          * a frame with zero-lengtha payload is received, indicating
           * the end of the stream, the method session.videoEnded() is
           * called, and the thread is terminated.
           */

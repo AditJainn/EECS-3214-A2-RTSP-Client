@@ -56,7 +56,7 @@ public class Session {
                     for (SessionListener listener : sessionListeners) {
                         Frame f = bufferedFrames.pollFirst();
                         lastSequenceNumber = f.getSequenceNumber();
-                        System.out.println(f.getSequenceNumber() + "" + sendingtoUI);
+                        System.out.println(f.getSequenceNumber() + "" + sendingtoUI + " BUIFFER " +bufferedFrames.size()) ;
                         listener.frameReceived(f);
                     }
                 }
