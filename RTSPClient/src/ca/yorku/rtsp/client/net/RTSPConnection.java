@@ -161,6 +161,7 @@ public class RTSPConnection {
 
             while (!Thread.interrupted()) {
                 try {
+                    // System.out.println("Thread running: " + Thread.currentThread().getName());
                     videoSocket.receive(packet);
                     f = parseRTPPacket(packet);
 
@@ -168,8 +169,13 @@ public class RTSPConnection {
                         session.videoEnded(cSeq);
                         break;
                     }
+                    try {
+                        session.processReceivedFrame(f);
 
-                    session.processReceivedFrame(f);
+                    } catch (Exception e) {
+                        throw new IOException("SOMETHING WENT WRONG");
+                        // TODO: handle exception
+                    }
                 } catch (SocketTimeoutException e) {
                     if (paused)
                         System.out.println("Timeout expected.");
