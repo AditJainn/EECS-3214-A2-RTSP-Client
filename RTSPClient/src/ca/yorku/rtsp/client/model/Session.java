@@ -49,18 +49,19 @@ public class Session {
         timer = new Timer();
         this.sendingtoUI = false;
         timer.schedule(new TimerTask() {
+            private int lastSequenceNumber = 0;
             @Override
             public void run() {
                 if (sendingtoUI && bufferedFrames.size() != 0) {
                     for (SessionListener listener : sessionListeners) {
                         Frame f = bufferedFrames.pollFirst();
-                        System.out.println(f.getPayloadLength());
+                        lastSequenceNumber = f.getSequenceNumber();
+                        System.out.println(f.getSequenceNumber() + "" + sendingtoUI);
                         listener.frameReceived(f);
                     }
-
                 }
             }
-        }, 0, 40);
+        }, 0,40);
     }
 
     /**
@@ -147,6 +148,7 @@ public class Session {
      */
     public synchronized void pause() {
         this.userState = stateEnum.PAUSE;
+        sendingtoUI = false;
         try {
             rtspConnection.pause();
         } catch (RTSPException e) {
@@ -190,9 +192,8 @@ public class Session {
      * presented to the user.
      *
      * @param frame The recently received frame.
-     * @throws RTSPException
      */
-    public synchronized void processReceivedFrame(Frame frame) throws RTSPException {
+    public synchronized void processReceivedFrame(Frame frame) {
         // the connection state here has to be PLAY coming in
         // Can be called by RTSPConnection or through THIS class. So we will do most of
         // the logic here.
@@ -204,16 +205,25 @@ public class Session {
             try {
                 userSetup(frame);
             } catch (Exception e) {
-                throw new RTSPException(e);
+                System.out.println("Caught new exception" + e.getStackTrace());
             }
             return;
         } else if (userState == stateEnum.PLAY && connectionState == stateEnum.PLAY) {
             try {
                 userPlay(frame);
             } catch (Exception e) {
-                throw new RTSPException(e);
+                System.out.println("Caught new exception" + e.getStackTrace());
             }
             return;
+        } else if (userState == stateEnum.PAUSE && connectionState == stateEnum.PLAY) {
+            sendingtoUI = false;
+            try {
+                userPause(frame);
+            } catch (Exception e) {
+                System.out.println("Caught new exception" + e.getStackTrace());
+            }
+            return;
+
         }
 
     }
@@ -250,6 +260,17 @@ public class Session {
                     e.printStackTrace();
                 }
             }
+        }
+        return;
+    }
+
+    public synchronized void userPause(Frame frame) throws RTSPException {
+        // System.out.println(bufferedFrames.size());
+        if (bufferedFrames.size() < 80) {
+            bufferedFrames.add(frame);
+        } else if (bufferedFrames.size() > 100) {
+            bufferedFrames.add(frame);
+            connectionState = stateEnum.PAUSE;
         }
         return;
     }
