@@ -258,14 +258,22 @@ public class Session {
         if (bufferedFrames.isEmpty()) {
             bufferedFrames.add(frame);
             sendingtoUI = false;
-        } else if (bufferedFrames.size() < 49) {
+        }
+        else if (bufferedFrames.size() < 49 && sendingtoUI ==false) {
             bufferedFrames.add(frame);
-            connectionState = stateEnum.PLAY;
+            if (bufferedFrames.size()> 49){
+                sendingtoUI = true;
+            }
+        }
+        else if (bufferedFrames.size() < 49) {
+            bufferedFrames.add(frame);
+            this.sendingtoUI = true;
+            connectionState = stateEnum.PLAY; 
         } else if (bufferedFrames.size() < 99) {
             sendingtoUI = true;
             bufferedFrames.add(frame);
-        } else {
-            sendingtoUI = true;
+        } else { //frames are greater than 99
+            sendingtoUI = true; 
             bufferedFrames.add(frame);
             connectionState = stateEnum.PAUSE;
             rtspConnection.pause();
