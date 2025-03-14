@@ -58,11 +58,16 @@ public class Session {
                     for (SessionListener listener : sessionListeners) {
                         Frame f = bufferedFrames.pollFirst();
                         if (f.getSequenceNumber() > lastSequenceNumber) {
-                            System.out.println(
-                                    f.getSequenceNumber() + "" + sendingtoUI + " BUIFFER " + bufferedFrames.size()
-                                            + " Connection State" + connectionState);
-                            listener.frameReceived(f);
-                            lastSequenceNumber = f.getSequenceNumber();
+                            if (f.getSequenceNumber() == lastSequenceNumber + 1) {
+                                System.out.println(
+                                        f.getSequenceNumber() + "" + sendingtoUI + " BUIFFER " + bufferedFrames.size()
+                                                + " Connection State" + connectionState);
+                                listener.frameReceived(f);
+                                lastSequenceNumber = f.getSequenceNumber();
+                            } else {
+                                bufferedFrames.add(f);
+                                lastSequenceNumber++;
+                            }
                         } else {
                             System.out.println("Frame" + f.getSequenceNumber() + " Came to late");
                         }
