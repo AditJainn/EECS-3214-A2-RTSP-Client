@@ -57,10 +57,15 @@ public class Session {
                 if (sendingtoUI && bufferedFrames.size() != 0) {
                     for (SessionListener listener : sessionListeners) {
                         Frame f = bufferedFrames.pollFirst();
-                        lastSequenceNumber = f.getSequenceNumber();
-                        System.out.println(
-                                f.getSequenceNumber() + "" + sendingtoUI + " BUIFFER " + bufferedFrames.size() +" Connection State"+connectionState);
-                        listener.frameReceived(f);
+                        if (f.getSequenceNumber() > lastSequenceNumber) {
+                            System.out.println(
+                                    f.getSequenceNumber() + "" + sendingtoUI + " BUIFFER " + bufferedFrames.size()
+                                            + " Connection State" + connectionState);
+                            listener.frameReceived(f);
+                            lastSequenceNumber = f.getSequenceNumber();
+                        } else {
+                            System.out.println("Frame" + f.getSequenceNumber() + " Came to late");
+                        }
                     }
                 }
                 if (hasVideoEnded == true && bufferedFrames.size() == 0) {
@@ -134,6 +139,7 @@ public class Session {
      */
     public synchronized void play() {
         // Can only be called by the client connection.
+        this.sendingtoUI = true;
         if (this.connectionState == stateEnum.PLAY) {
             this.userState = stateEnum.PLAY;
         } else {
@@ -157,11 +163,6 @@ public class Session {
     public synchronized void pause() {
         this.userState = stateEnum.PAUSE;
         sendingtoUI = false;
-        try {
-            rtspConnection.pause();
-        } catch (RTSPException e) {
-            listenerException(e);
-        }
     }
 
     /**
@@ -172,7 +173,6 @@ public class Session {
         this.userState = stateEnum.CLOSE;
         try {
             rtspConnection.teardown();
-            videoEnded(0);
             videoName = null;
             for (SessionListener listener : sessionListeners)
                 listener.videoNameChanged(this.videoName);
@@ -210,7 +210,7 @@ public class Session {
         // bufferedFrames.add(frame);
         // videoEnded(frame.getSequenceNumber());
         // System.out.println("last frame recieved");
-        // this.hasVideoEnded = true;   
+        // this.hasVideoEnded = true;
         // return;
         // }
         if (userState == stateEnum.SETUP && connectionState == stateEnum.PLAY) {
@@ -227,8 +227,7 @@ public class Session {
                 System.out.println("Caught new exception" + e.getStackTrace());
             }
             return;
-        } else if (userState == stateEnum.PAUSE ) {
-            sendingtoUI = false;
+        } else if (userState == stateEnum.PAUSE) {
             try {
                 userPause(frame);
             } catch (Exception e) {
@@ -247,8 +246,7 @@ public class Session {
             bufferedFrames.add(frame);
             connectionState = stateEnum.PAUSE;
             rtspConnection.pause();
-        }
-        else{
+        } else {
             bufferedFrames.add(frame);
         }
     }
@@ -259,27 +257,28 @@ public class Session {
             bufferedFrames.add(frame);
             sendingtoUI = false;
         }
-        else if (bufferedFrames.size() < 49 && sendingtoUI ==false) {
-            bufferedFrames.add(frame);
-            if (bufferedFrames.size()> 49){
-                sendingtoUI = true;
-            }
-        }
+        // else if (bufferedFrames.size() < 49 && sendingtoUI ==false) {
+        // bufferedFrames.add(frame);
+        // if (bufferedFrames.size()> 49){
+        // sendingtoUI = true;
+        // }
+        // }
         else if (bufferedFrames.size() < 49) {
             bufferedFrames.add(frame);
             this.sendingtoUI = true;
-            connectionState = stateEnum.PLAY; 
-        } else if (bufferedFrames.size() < 99) {
+            connectionState = stateEnum.PLAY;
+        } else if (bufferedFrames.size() < 99) { // total frames are less than
             sendingtoUI = true;
             bufferedFrames.add(frame);
-        } else { //frames are greater than 99
-            sendingtoUI = true; 
+        } else { // frames are greater than 99
+            sendingtoUI = true;
             bufferedFrames.add(frame);
             connectionState = stateEnum.PAUSE;
             rtspConnection.pause();
             while (bufferedFrames.size() > 79) {
                 try {
-                    Thread.sleep(20); // Pause this thread for half the time it takes for the timer thread takes to display
+                    Thread.sleep(20); // Pause this thread for half the time it takes for the timer thread takes to
+                                      // display
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
@@ -291,11 +290,12 @@ public class Session {
 
     public synchronized void userPause(Frame frame) throws RTSPException {
         // System.out.println(bufferedFrames.size());
-        if (bufferedFrames.size() < 80) {
+        if (bufferedFrames.size() <= 80) {
             bufferedFrames.add(frame);
-        } else if (bufferedFrames.size() > 100) {
+        } else if (bufferedFrames.size() >= 100) {
             bufferedFrames.add(frame);
             connectionState = stateEnum.PAUSE;
+            rtspConnection.pause();
         }
         return;
     }
