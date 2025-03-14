@@ -19,8 +19,8 @@ import java.util.Set;
  */
 public class Session {
 
-    private Set<SessionListener> sessionListeners = new HashSet<SessionListener>();
-    private RTSPConnection rtspConnection;
+    private final Set<SessionListener> sessionListeners = new HashSet<>();
+    private final RTSPConnection rtspConnection;
     private String videoName = null;
 
     /**
@@ -146,8 +146,8 @@ public class Session {
      * user interface to be handled as needed.
      *
      * @param sequenceNumber The sequence number for the end
-     * notification. Corresponds to the last frame plus one. Can be
-     * used to identify a missing frame at the end of the stream.
+     *                       notification. Corresponds to the last frame plus one. Can be
+     *                       used to identify a missing frame at the end of the stream.
      */
     public synchronized void videoEnded(int sequenceNumber) {
         for (SessionListener listener : sessionListeners)
