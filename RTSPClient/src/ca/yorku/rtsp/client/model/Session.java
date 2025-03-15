@@ -55,18 +55,33 @@ public class Session {
             @Override
             public void run() {
                 if (sendingtoUI && bufferedFrames.size() != 0) {
+                    Frame f = null;
+                    while (!bufferedFrames.isEmpty()) {
+                        f = bufferedFrames.first();
+
+                        if (f.getSequenceNumber() <= lastSequenceNumber) {
+                            bufferedFrames.pollFirst();
+                        } else if (f.getSequenceNumber() > lastSequenceNumber + 1) {
+                            lastSequenceNumber++;
+                            return;
+                        } else { // f.getSequenceNumber() == lastSequenceNumber + 1
+                            f = bufferedFrames.pollFirst();
+                            break;
+                        }
+                    }
+                    if (f == null) return;
+
                     for (SessionListener listener : sessionListeners) {
-                        Frame f = bufferedFrames.pollFirst();
-                        lastSequenceNumber++;
+//                        Frame f = bufferedFrames.pollFirst();
                         if (f.getSequenceNumber() >= lastSequenceNumber) {
-                            if (f.getSequenceNumber() == lastSequenceNumber) {
+                            if (f.getSequenceNumber() == lastSequenceNumber + 1) {
                                 System.out.println(
                                         f.getSequenceNumber() + "" + sendingtoUI + " BUIFFER " + bufferedFrames.size()
                                                 + " Connection State" + connectionState);
                                 listener.frameReceived(f);
                                 lastSequenceNumber = f.getSequenceNumber();
                             } else {
-                                bufferedFrames.add(f);
+//                                bufferedFrames.add(f);
                             }
                         } else {
                             System.out.println("Frame" + f.getSequenceNumber() + " Came to late");
@@ -283,7 +298,7 @@ public class Session {
             while (bufferedFrames.size() > 79) {
                 try {
                     Thread.sleep(20); // Pause this thread for half the time it takes for the timer thread takes to
-                                      // display
+                    // display
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
@@ -343,3 +358,4 @@ public class Session {
 
     }
 }
+
